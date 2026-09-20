@@ -49,6 +49,10 @@ public class SecurityEventConsumer {
                 handleFailedLogin(event);
             }
 
+            if ("ROLE_CHANGED".equals(event.getEventType())) {
+                handleRoleChange(event);
+            }
+
         } catch (Exception e) {
             System.err.println(
                     "Failed to process security event: "
@@ -95,6 +99,33 @@ public class SecurityEventConsumer {
                     username,
                     event.getIpAddress(),
                     failedLoginCount.intValue()
+            );
+        }
+    }
+
+    private void handleRoleChange(SecurityEventMessage event) {
+
+        String details = event.getDetails();
+
+        if (details == null) {
+            return;
+        }
+
+        boolean privilegeEscalation =
+                details.contains("ANALYST")
+                        && details.contains("SECURITY_ADMIN");
+
+        if (privilegeEscalation) {
+
+            System.out.println(
+                    "PRIVILEGE ESCALATION THREAT DETECTED for user "
+                            + event.getUsername()
+                            + " - role changed from ANALYST to SECURITY_ADMIN"
+            );
+
+            threatDetectionService.savePrivilegeEscalationThreat(
+                    event.getUsername(),
+                    event.getIpAddress()
             );
         }
     }

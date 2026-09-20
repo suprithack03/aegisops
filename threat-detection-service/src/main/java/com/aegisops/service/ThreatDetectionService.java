@@ -38,4 +38,26 @@ public class ThreatDetectionService {
 
         return threatRepository.save(threat);
     }
+
+    public Threat savePrivilegeEscalationThreat(
+            String username,
+            String ipAddress) {
+
+        Threat threat = new Threat();
+
+        threat.setThreatType("PRIVILEGE_ESCALATION");
+        threat.setSeverity("HIGH");
+        threat.setUsername(username);
+        threat.setIpAddress(ipAddress);
+        threat.setThreatScore(90);
+        threat.setDetectedAt(LocalDateTime.now());
+        threat.setDescription(
+                "Detected a role change that elevated user "
+                        + username
+                        + " to SECURITY_ADMIN."
+        );
+        threat.setStatus("OPEN");
+
+        return threatRepository.save(threat);
+    }
 }
