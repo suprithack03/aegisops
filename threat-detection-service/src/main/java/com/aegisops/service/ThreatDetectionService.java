@@ -60,4 +60,54 @@ public class ThreatDetectionService {
 
         return threatRepository.save(threat);
     }
+
+    public Threat saveApiAbuseThreat(
+            String username,
+            String ipAddress,
+            int requestCount) {
+
+        Threat threat = new Threat();
+
+        threat.setThreatType("API_ABUSE");
+        threat.setSeverity("MEDIUM");
+        threat.setUsername(username);
+        threat.setIpAddress(ipAddress);
+        threat.setThreatScore(70);
+        threat.setDetectedAt(LocalDateTime.now());
+        threat.setDescription(
+                "Detected "
+                        + requestCount
+                        + " API requests from user "
+                        + username
+                        + " within the configured detection window."
+        );
+        threat.setStatus("OPEN");
+
+        return threatRepository.save(threat);
+    }
+
+    public Threat saveSuspiciousActivityThreat(
+            String username,
+            String ipAddress,
+            int unauthorizedAccessCount) {
+
+        Threat threat = new Threat();
+
+        threat.setThreatType("SUSPICIOUS_ACTIVITY");
+        threat.setSeverity("MEDIUM");
+        threat.setUsername(username);
+        threat.setIpAddress(ipAddress);
+        threat.setThreatScore(60);
+        threat.setDetectedAt(LocalDateTime.now());
+        threat.setDescription(
+                "Detected "
+                        + unauthorizedAccessCount
+                        + " unauthorized access attempts for user "
+                        + username
+                        + " within the configured detection window."
+        );
+        threat.setStatus("OPEN");
+
+        return threatRepository.save(threat);
+    }
 }
