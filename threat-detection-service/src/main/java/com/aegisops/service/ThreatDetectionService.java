@@ -1,5 +1,6 @@
 package com.aegisops.service;
 
+import com.aegisops.dto.ThreatDetectedMessage;
 import com.aegisops.entity.Threat;
 import com.aegisops.repository.ThreatRepository;
 import org.springframework.stereotype.Service;
@@ -10,9 +11,13 @@ import java.time.LocalDateTime;
 public class ThreatDetectionService {
 
     private final ThreatRepository threatRepository;
+    private final ThreatKafkaProducer threatKafkaProducer;
 
-    public ThreatDetectionService(ThreatRepository threatRepository) {
+    public ThreatDetectionService(
+            ThreatRepository threatRepository,
+            ThreatKafkaProducer threatKafkaProducer) {
         this.threatRepository = threatRepository;
+        this.threatKafkaProducer = threatKafkaProducer;
     }
 
     public Threat saveBruteForceThreat(
@@ -36,7 +41,10 @@ public class ThreatDetectionService {
         );
         threat.setStatus("OPEN");
 
-        return threatRepository.save(threat);
+        Threat savedThreat = threatRepository.save(threat);
+        publishThreat(savedThreat);
+
+        return savedThreat;
     }
 
     public Threat savePrivilegeEscalationThreat(
@@ -58,7 +66,10 @@ public class ThreatDetectionService {
         );
         threat.setStatus("OPEN");
 
-        return threatRepository.save(threat);
+        Threat savedThreat = threatRepository.save(threat);
+        publishThreat(savedThreat);
+
+        return savedThreat;
     }
 
     public Threat saveApiAbuseThreat(
@@ -83,7 +94,10 @@ public class ThreatDetectionService {
         );
         threat.setStatus("OPEN");
 
-        return threatRepository.save(threat);
+        Threat savedThreat = threatRepository.save(threat);
+        publishThreat(savedThreat);
+
+        return savedThreat;
     }
 
     public Threat saveSuspiciousActivityThreat(
@@ -108,6 +122,34 @@ public class ThreatDetectionService {
         );
         threat.setStatus("OPEN");
 
-        return threatRepository.save(threat);
+        Threat savedThreat = threatRepository.save(threat);
+        publishThreat(savedThreat);
+
+        return savedThreat;
+    }
+
+    private void publishThreat(Threat threat) {
+
+        ThreatDetectedMessage message =
+                new ThreatDetectedMessage();
+
+        message.setThreatId(threat.getId());
+        message.setThreatType(threat.getThreatType());
+        message.setSeverity(threat.getSeverity());
+        message.setUsername(threat.getUsername());
+        message.setIpAddress(threat.getIpAddress());
+        message.setThreatScore(threat.getThreatScore());
+        message.setDetectedAt(threat.getDetectedAt());
+        message.setDescription(threat.getDescription());
+        message.setStatus(threat.getStatus());
+
+        threatKafkaProducer.publish(message);
+
+        System.out.println(
+                "Published THREAT_DETECTED event for threat "
+                        + threat.getId()
+                        + " of type "
+                        + threat.getThreatType()
+        );
     }
 }
