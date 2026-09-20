@@ -11,9 +11,14 @@ import java.time.LocalDateTime;
 public class SecurityEventService {
 
     private final SecurityEventRepository securityEventRepository;
+    private final SecurityEventKafkaProducer securityEventKafkaProducer;
 
-    public SecurityEventService(SecurityEventRepository securityEventRepository) {
+    public SecurityEventService(
+            SecurityEventRepository securityEventRepository,
+            SecurityEventKafkaProducer securityEventKafkaProducer) {
+
         this.securityEventRepository = securityEventRepository;
+        this.securityEventKafkaProducer = securityEventKafkaProducer;
     }
 
     public SecurityEvent createEvent(SecurityEventRequest request) {
@@ -26,6 +31,13 @@ public class SecurityEventService {
         event.setTimestamp(LocalDateTime.now());
         event.setDetails(request.getDetails());
 
-        return securityEventRepository.save(event);
+        // 1. Save the security event in PostgreSQL
+        SecurityEvent savedEvent = securityEventRepository.save(event);
+
+        // 2. Publish the saved event to Kafka
+        securityEventKafkaProducer.publish(savedEvent);
+
+        return savedEvent;
     }
 }
+
