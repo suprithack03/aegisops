@@ -19,13 +19,20 @@ public class IncidentService {
             "FALSE_POSITIVE"
     );
 
+    private static final String APPROVAL_PENDING = "PENDING";
+    private static final String APPROVAL_APPROVED = "APPROVED";
+    private static final String APPROVAL_REJECTED = "REJECTED";
+
     private final IncidentRepository incidentRepository;
 
-    public IncidentService(IncidentRepository incidentRepository) {
+    public IncidentService(
+            IncidentRepository incidentRepository) {
+
         this.incidentRepository = incidentRepository;
     }
 
-    public Incident createIncident(ThreatDetectedMessage threat) {
+    public Incident createIncident(
+            ThreatDetectedMessage threat) {
 
         Incident incident = new Incident();
 
@@ -46,7 +53,9 @@ public class IncidentService {
                 threat.getDescription()
         );
 
-        incident.setApprovalStatus("PENDING");
+        incident.setApprovalStatus(
+                APPROVAL_PENDING
+        );
 
         Incident savedIncident =
                 incidentRepository.save(incident);
@@ -65,9 +74,12 @@ public class IncidentService {
             Long incidentId,
             String newStatus) {
 
-        if (newStatus == null || !VALID_STATUSES.contains(newStatus)) {
+        if (newStatus == null ||
+                !VALID_STATUSES.contains(newStatus)) {
+
             throw new IllegalArgumentException(
-                    "Invalid incident status: " + newStatus
+                    "Invalid incident status: "
+                            + newStatus
             );
         }
 
@@ -93,5 +105,77 @@ public class IncidentService {
         );
 
         return updatedIncident;
+    }
+
+    public Incident approveIncident(
+            Long incidentId) {
+
+        Incident incident =
+                incidentRepository.findById(incidentId)
+                        .orElseThrow(
+                                () -> new RuntimeException(
+                                        "Incident not found: "
+                                                + incidentId
+                                )
+                        );
+
+        if (!APPROVAL_PENDING.equals(
+                incident.getApprovalStatus())) {
+
+            throw new IllegalStateException(
+                    "Incident approval is not pending."
+            );
+        }
+
+        incident.setApprovalStatus(
+                APPROVAL_APPROVED
+        );
+
+        Incident approvedIncident =
+                incidentRepository.save(incident);
+
+        System.out.println(
+                "Incident "
+                        + incidentId
+                        + " approved."
+        );
+
+        return approvedIncident;
+    }
+
+    public Incident rejectIncident(
+            Long incidentId) {
+
+        Incident incident =
+                incidentRepository.findById(incidentId)
+                        .orElseThrow(
+                                () -> new RuntimeException(
+                                        "Incident not found: "
+                                                + incidentId
+                                )
+                        );
+
+        if (!APPROVAL_PENDING.equals(
+                incident.getApprovalStatus())) {
+
+            throw new IllegalStateException(
+                    "Incident approval is not pending."
+            );
+        }
+
+        incident.setApprovalStatus(
+                APPROVAL_REJECTED
+        );
+
+        Incident rejectedIncident =
+                incidentRepository.save(incident);
+
+        System.out.println(
+                "Incident "
+                        + incidentId
+                        + " rejected."
+        );
+
+        return rejectedIncident;
     }
 }
