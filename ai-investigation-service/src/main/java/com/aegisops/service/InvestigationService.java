@@ -9,6 +9,8 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class InvestigationService {
@@ -16,15 +18,18 @@ public class InvestigationService {
     private final InvestigationRepository investigationRepository;
     private final IncidentClient incidentClient;
     private final GeminiService geminiService;
+    private final KnowledgeSearchService knowledgeSearchService;
 
     public InvestigationService(
             InvestigationRepository investigationRepository,
             IncidentClient incidentClient,
-            GeminiService geminiService) {
+            GeminiService geminiService,
+            KnowledgeSearchService knowledgeSearchService) {
 
         this.investigationRepository = investigationRepository;
         this.incidentClient = incidentClient;
         this.geminiService = geminiService;
+        this.knowledgeSearchService = knowledgeSearchService;
     }
 
     public Investigation createInvestigation(
@@ -49,9 +54,20 @@ public class InvestigationService {
 
         IncidentDetails incident = incidentClient.getIncident(incidentId);
 
-        String prompt = buildInvestigationPrompt(incident);
+        List<Map<String, Object>> knowledgeDocuments =
+                knowledgeSearchService.searchSimilar(
+                        buildKnowledgeQuery(incident),
+                        3
+                );
 
-        String geminiResponse = geminiService.generateInvestigation(prompt);
+        String knowledgeContext =
+                buildKnowledgeContext(knowledgeDocuments);
+
+        String prompt =
+                buildInvestigationPrompt(incident, knowledgeContext);
+
+        String geminiResponse =
+                geminiService.generateInvestigation(prompt);
 
         try {
             ObjectMapper objectMapper = new ObjectMapper();
@@ -77,16 +93,65 @@ public class InvestigationService {
         }
     }
 
-    private String buildInvestigationPrompt(IncidentDetails incident) {
+    private String buildKnowledgeQuery(IncidentDetails incident) {
+
+        return """
+                Security investigation for incident type %s with severity %s.
+                The incident involves user %s from IP address %s.
+                Evidence: %s
+                """.formatted(
+                incident.getIncidentType(),
+                incident.getSeverity(),
+                incident.getUsername(),
+                incident.getIpAddress(),
+                incident.getEvidence()
+        );
+    }
+
+    private String buildKnowledgeContext(
+            List<Map<String, Object>> knowledgeDocuments) {
+
+        if (knowledgeDocuments.isEmpty()) {
+            return "No relevant security knowledge was retrieved.";
+        }
+
+        return knowledgeDocuments.stream()
+                .map(document ->
+                        """
+                        Knowledge Title: %s
+                        Knowledge Type: %s
+                        Source: %s
+                        Content: %s
+                        Similarity: %s
+                        """.formatted(
+                                document.get("title"),
+                                document.get("document_type"),
+                                document.get("source"),
+                                document.get("content"),
+                                document.get("similarity")
+                        )
+                )
+                .collect(Collectors.joining("\n"));
+    }
+
+    private String buildInvestigationPrompt(
+            IncidentDetails incident,
+            String knowledgeContext) {
 
         return """
                 You are investigating a security incident in AegisOps.
 
-                Use only the incident information provided below.
+                Use only the incident information and retrieved security
+                knowledge provided below.
+
                 Do not invent facts.
-                Provide evidence-based findings.
+                Treat retrieved knowledge as guidance, not as evidence that
+                an event actually occurred.
+                Findings about the incident must be based on the incident data.
                 The recommended action must be a security recommendation only.
                 Do not claim that any action was executed.
+
+                INCIDENT INFORMATION
 
                 Incident ID: %d
                 Threat ID: %d
@@ -103,6 +168,10 @@ public class InvestigationService {
                 Existing Recommended Action: %s
                 Approval Status: %s
                 Resolution: %s
+
+                RETRIEVED SECURITY KNOWLEDGE
+
+                %s
                 """.formatted(
                 incident.getId(),
                 incident.getThreatId(),
@@ -118,7 +187,8 @@ public class InvestigationService {
                 incident.getAiInvestigation(),
                 incident.getRecommendedAction(),
                 incident.getApprovalStatus(),
-                incident.getResolution()
+                incident.getResolution(),
+                knowledgeContext
         );
     }
 
