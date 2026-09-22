@@ -28,6 +28,30 @@ function getUserFromToken(storedToken) {
     }
 }
 
+function formatDetailValue(value) {
+    if (value === null || value === undefined || value === "") {
+        return "—";
+    }
+
+    return value;
+}
+
+function formatAiInvestigation(value) {
+    if (!value) {
+        return "No AI investigation available.";
+    }
+
+    try {
+        return JSON.stringify(
+            JSON.parse(value),
+            null,
+            2
+        );
+    } catch (error) {
+        return value;
+    }
+}
+
 function App() {
     const storedToken = localStorage.getItem("aegisops_token");
     const initialUser = getUserFromToken(storedToken);
@@ -53,6 +77,13 @@ function App() {
     const [loadingIncidents, setLoadingIncidents] =
         useState(false);
     const [incidentError, setIncidentError] = useState("");
+
+    const [selectedIncident, setSelectedIncident] =
+        useState(null);
+    const [loadingIncidentDetails, setLoadingIncidentDetails] =
+        useState(false);
+    const [incidentDetailError, setIncidentDetailError] =
+        useState("");
 
     async function handleLogin(event) {
         event.preventDefault();
@@ -177,6 +208,126 @@ function App() {
         }
     }
 
+    async function loadIncidentDetails(incidentId) {
+        const storedToken =
+            localStorage.getItem("aegisops_token");
+
+        if (!storedToken) {
+            return;
+        }
+
+        setSelectedIncident(null);
+        setIncidentDetailError("");
+        setLoadingIncidentDetails(true);
+
+        try {
+            const response = await fetch(
+                `${GATEWAY_URL}/api/incidents/${incidentId}`,
+                {
+                    method: "GET",
+                    headers: {
+                        Authorization:
+                            `Bearer ${storedToken}`
+                    }
+                }
+            );
+
+            if (response.status === 401) {
+                handleLogout();
+                return;
+            }
+
+            if (response.status === 403) {
+                setIncidentDetailError(
+                    "You are not authorized to view this incident."
+                );
+                return;
+            }
+
+            if (!response.ok) {
+                setIncidentDetailError(
+                    `Unable to load incident details. HTTP ${response.status}`
+                );
+                return;
+            }
+
+            const data = await response.json();
+
+            setSelectedIncident(data);
+
+        } catch (error) {
+            setIncidentDetailError(
+                "Unable to connect to the AegisOps Gateway."
+            );
+        } finally {
+            setLoadingIncidentDetails(false);
+        }
+    }
+
+    async function updateApproval(
+        incidentId,
+        approvalAction
+    ) {
+        const storedToken =
+            localStorage.getItem("aegisops_token");
+
+        if (!storedToken) {
+            return;
+        }
+
+        setIncidentDetailError("");
+
+        try {
+            const response = await fetch(
+                `${GATEWAY_URL}/api/incidents/${incidentId}/${approvalAction}`,
+                {
+                    method: "POST",
+                    headers: {
+                        Authorization:
+                            `Bearer ${storedToken}`
+                    }
+                }
+            );
+
+            if (response.status === 401) {
+                handleLogout();
+                return;
+            }
+
+            if (response.status === 403) {
+                setIncidentDetailError(
+                    "You are not authorized to perform this action."
+                );
+                return;
+            }
+
+            if (!response.ok) {
+                setIncidentDetailError(
+                    `Unable to update approval. HTTP ${response.status}`
+                );
+                return;
+            }
+
+            const updatedIncident =
+                await response.json();
+
+            setSelectedIncident(updatedIncident);
+
+            setIncidents((currentIncidents) =>
+                currentIncidents.map((incident) =>
+                    incident.id === updatedIncident.id
+                        ? updatedIncident
+                        : incident
+                )
+            );
+
+        } catch (error) {
+            setIncidentDetailError(
+                "Unable to connect to the AegisOps Gateway."
+            );
+        }
+    }
+
     function handleLogout() {
         localStorage.removeItem("aegisops_token");
         localStorage.removeItem("aegisops_username");
@@ -186,7 +337,14 @@ function App() {
         setDisplayUsername("Security User");
         setDisplayRole("USER");
         setIncidents([]);
+        setSelectedIncident(null);
         setIncidentError("");
+        setIncidentDetailError("");
+    }
+
+    function handleBackToIncidents() {
+        setSelectedIncident(null);
+        setIncidentDetailError("");
     }
 
     useEffect(() => {
@@ -374,94 +532,339 @@ function App() {
                 </section>
 
                 <section className="incidents-section">
-                    <div className="section-header">
-                        <h3>Incidents</h3>
-                    </div>
+                    {!selectedIncident && (
+                        <>
+                            <div className="section-header">
+                                <h3>Incidents</h3>
+                            </div>
 
-                    {loadingIncidents && (
+                            {loadingIncidents && (
+                                <div className="empty-state">
+                                    Loading incidents...
+                                </div>
+                            )}
+
+                            {!loadingIncidents &&
+                                incidents.length === 0 &&
+                                !incidentError && (
+                                    <div className="empty-state">
+                                        No incidents found.
+                                    </div>
+                                )}
+
+                            {!loadingIncidents &&
+                                incidents.length > 0 && (
+                                    <div className="table-container">
+                                        <table>
+                                            <thead>
+                                                <tr>
+                                                    <th>ID</th>
+                                                    <th>Type</th>
+                                                    <th>Severity</th>
+                                                    <th>Status</th>
+                                                    <th>User</th>
+                                                    <th>
+                                                        Threat Score
+                                                    </th>
+                                                    <th>
+                                                        Action
+                                                    </th>
+                                                </tr>
+                                            </thead>
+
+                                            <tbody>
+                                                {incidents.map(
+                                                    (incident) => (
+                                                        <tr
+                                                            key={
+                                                                incident.id
+                                                            }
+                                                        >
+                                                            <td>
+                                                                {
+                                                                    incident.id
+                                                                }
+                                                            </td>
+
+                                                            <td>
+                                                                {
+                                                                    incident.incidentType
+                                                                }
+                                                            </td>
+
+                                                            <td>
+                                                                <span
+                                                                    className={`severity-badge severity-${String(
+                                                                        incident.severity
+                                                                    ).toLowerCase()}`}
+                                                                >
+                                                                    {
+                                                                        incident.severity
+                                                                    }
+                                                                </span>
+                                                            </td>
+
+                                                            <td>
+                                                                {
+                                                                    incident.status
+                                                                }
+                                                            </td>
+
+                                                            <td>
+                                                                {
+                                                                    incident.username ||
+                                                                    "—"
+                                                                }
+                                                            </td>
+
+                                                            <td>
+                                                                {
+                                                                    incident.threatScore
+                                                                }
+                                                            </td>
+
+                                                            <td>
+                                                                <button
+                                                                    className="view-button"
+                                                                    onClick={() =>
+                                                                        loadIncidentDetails(
+                                                                            incident.id
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    View
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    )
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                        </>
+                    )}
+
+                    {loadingIncidentDetails && (
                         <div className="empty-state">
-                            Loading incidents...
+                            Loading incident details...
                         </div>
                     )}
 
-                    {!loadingIncidents &&
-                        incidents.length === 0 &&
-                        !incidentError && (
-                            <div className="empty-state">
-                                No incidents found.
+                    {incidentDetailError && (
+                        <div className="incident-detail-container">
+                            <div className="message error-message">
+                                {
+                                    incidentDetailError
+                                }
                             </div>
-                        )}
 
-                    {!loadingIncidents &&
-                        incidents.length > 0 && (
-                            <div className="table-container">
-                                <table>
-                                    <thead>
-                                        <tr>
-                                            <th>ID</th>
-                                            <th>Type</th>
-                                            <th>Severity</th>
-                                            <th>Status</th>
-                                            <th>User</th>
-                                            <th>Threat Score</th>
-                                        </tr>
-                                    </thead>
+                            <button
+                                className="back-button"
+                                onClick={
+                                    handleBackToIncidents
+                                }
+                            >
+                                Back to incidents
+                            </button>
+                        </div>
+                    )}
 
-                                    <tbody>
-                                        {incidents.map(
-                                            (incident) => (
-                                                <tr
-                                                    key={
-                                                        incident.id
+                    {selectedIncident &&
+                        !loadingIncidentDetails && (
+                            <div className="incident-detail-container">
+                                <div className="incident-detail-header">
+                                    <div>
+                                        <h3>
+                                            Incident #
+                                            {
+                                                selectedIncident.id
+                                            }
+                                        </h3>
+
+                                        <p>
+                                            {
+                                                selectedIncident.incidentType
+                                            }
+                                        </p>
+                                    </div>
+
+                                    <button
+                                        className="back-button"
+                                        onClick={
+                                            handleBackToIncidents
+                                        }
+                                    >
+                                        Back to incidents
+                                    </button>
+                                </div>
+
+                                <div className="detail-grid">
+                                    <div className="detail-card">
+                                        <span>Severity</span>
+                                        <strong>
+                                            <span
+                                                className={`severity-badge severity-${String(
+                                                    selectedIncident.severity
+                                                ).toLowerCase()}`}
+                                            >
+                                                {
+                                                    selectedIncident.severity
+                                                }
+                                            </span>
+                                        </strong>
+                                    </div>
+
+                                    <div className="detail-card">
+                                        <span>Status</span>
+                                        <strong>
+                                            {
+                                                selectedIncident.status
+                                            }
+                                        </strong>
+                                    </div>
+
+                                    <div className="detail-card">
+                                        <span>Threat score</span>
+                                        <strong>
+                                            {
+                                                selectedIncident.threatScore
+                                            }
+                                        </strong>
+                                    </div>
+
+                                    <div className="detail-card">
+                                        <span>Approval status</span>
+                                        <strong>
+                                            {formatDetailValue(
+                                                selectedIncident.approvalStatus
+                                            )}
+                                        </strong>
+                                    </div>
+
+                                    <div className="detail-card">
+                                        <span>Username</span>
+                                        <strong>
+                                            {formatDetailValue(
+                                                selectedIncident.username
+                                            )}
+                                        </strong>
+                                    </div>
+
+                                    <div className="detail-card">
+                                        <span>IP address</span>
+                                        <strong>
+                                            {formatDetailValue(
+                                                selectedIncident.ipAddress
+                                            )}
+                                        </strong>
+                                    </div>
+
+                                    <div className="detail-card">
+                                        <span>Threat ID</span>
+                                        <strong>
+                                            {formatDetailValue(
+                                                selectedIncident.threatId
+                                            )}
+                                        </strong>
+                                    </div>
+
+                                    <div className="detail-card">
+                                        <span>Detected at</span>
+                                        <strong>
+                                            {formatDetailValue(
+                                                selectedIncident.detectedAt
+                                            )}
+                                        </strong>
+                                    </div>
+                                </div>
+
+                                <div className="detail-content-card">
+                                    <h4>Evidence</h4>
+                                    <p className="detail-text">
+                                        {formatDetailValue(
+                                            selectedIncident.evidence
+                                        )}
+                                    </p>
+                                </div>
+
+                                <div className="detail-content-card">
+                                    <h4>Related events</h4>
+                                    <p className="detail-text">
+                                        {formatDetailValue(
+                                            selectedIncident.relatedEvents
+                                        )}
+                                    </p>
+                                </div>
+
+                                <div className="detail-content-card">
+                                    <h4>AI investigation</h4>
+                                    <pre className="detail-pre">
+                                        {
+                                            formatAiInvestigation(
+                                                selectedIncident.aiInvestigation
+                                            )
+                                        }
+                                    </pre>
+                                </div>
+
+                                <div className="detail-content-card">
+                                    <h4>Recommended action</h4>
+                                    <p className="detail-text">
+                                        {formatDetailValue(
+                                            selectedIncident.recommendedAction
+                                        )}
+                                    </p>
+                                </div>
+
+                                {displayRole === "SECURITY_ADMIN" &&
+                                    selectedIncident.approvalStatus ===
+                                        "PENDING" && (
+                                        <div className="approval-card">
+                                            <h4>Admin approval</h4>
+
+                                            <p className="detail-text">
+                                                Review the incident before
+                                                approving or rejecting the
+                                                recommended security action.
+                                            </p>
+
+                                            <div className="approval-actions">
+                                                <button
+                                                    className="approve-button"
+                                                    onClick={() =>
+                                                        updateApproval(
+                                                            selectedIncident.id,
+                                                            "approve"
+                                                        )
                                                     }
                                                 >
-                                                    <td>
-                                                        {
-                                                            incident.id
-                                                        }
-                                                    </td>
+                                                    Approve
+                                                </button>
 
-                                                    <td>
-                                                        {
-                                                            incident.incidentType
-                                                        }
-                                                    </td>
+                                                <button
+                                                    className="reject-button"
+                                                    onClick={() =>
+                                                        updateApproval(
+                                                            selectedIncident.id,
+                                                            "reject"
+                                                        )
+                                                    }
+                                                >
+                                                    Reject
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
 
-                                                    <td>
-                                                        <span
-                                                            className={`severity-badge severity-${String(
-                                                                incident.severity
-                                                            ).toLowerCase()}`}
-                                                        >
-                                                            {
-                                                                incident.severity
-                                                            }
-                                                        </span>
-                                                    </td>
-
-                                                    <td>
-                                                        {
-                                                            incident.status
-                                                        }
-                                                    </td>
-
-                                                    <td>
-                                                        {
-                                                            incident.username ||
-                                                            "—"
-                                                        }
-                                                    </td>
-
-                                                    <td>
-                                                        {
-                                                            incident.threatScore
-                                                        }
-                                                    </td>
-                                                </tr>
-                                            )
+                                <div className="detail-content-card">
+                                    <h4>Resolution</h4>
+                                    <p className="detail-text">
+                                        {formatDetailValue(
+                                            selectedIncident.resolution
                                         )}
-                                    </tbody>
-                                </table>
+                                    </p>
+                                </div>
                             </div>
                         )}
                 </section>
