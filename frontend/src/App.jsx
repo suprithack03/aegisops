@@ -29,7 +29,11 @@ function getUserFromToken(storedToken) {
 }
 
 function formatDetailValue(value) {
-    if (value === null || value === undefined || value === "") {
+    if (
+        value === null ||
+        value === undefined ||
+        value === ""
+    ) {
         return "—";
     }
 
@@ -53,8 +57,11 @@ function formatAiInvestigation(value) {
 }
 
 function App() {
-    const storedToken = localStorage.getItem("aegisops_token");
-    const initialUser = getUserFromToken(storedToken);
+    const storedToken =
+        localStorage.getItem("aegisops_token");
+
+    const initialUser =
+        getUserFromToken(storedToken);
 
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
@@ -63,27 +70,58 @@ function App() {
 
     const [token, setToken] = useState(storedToken);
 
-    const [displayUsername, setDisplayUsername] = useState(
-        localStorage.getItem("aegisops_username") ||
-        initialUser.username
-    );
+    const [displayUsername, setDisplayUsername] =
+        useState(
+            localStorage.getItem(
+                "aegisops_username"
+            ) ||
+            initialUser.username
+        );
 
-    const [displayRole, setDisplayRole] = useState(
-        localStorage.getItem("aegisops_role") ||
-        initialUser.role
-    );
+    const [displayRole, setDisplayRole] =
+        useState(
+            localStorage.getItem(
+                "aegisops_role"
+            ) ||
+            initialUser.role
+        );
 
     const [incidents, setIncidents] = useState([]);
     const [loadingIncidents, setLoadingIncidents] =
         useState(false);
-    const [incidentError, setIncidentError] = useState("");
+    const [incidentError, setIncidentError] =
+        useState("");
 
     const [selectedIncident, setSelectedIncident] =
         useState(null);
-    const [loadingIncidentDetails, setLoadingIncidentDetails] =
-        useState(false);
-    const [incidentDetailError, setIncidentDetailError] =
-        useState("");
+
+    const [
+        loadingIncidentDetails,
+        setLoadingIncidentDetails
+    ] = useState(false);
+
+    const [
+        incidentDetailError,
+        setIncidentDetailError
+    ] = useState("");
+
+    const [
+        actionType,
+        setActionType
+    ] = useState("");
+
+    const [
+        executingAction,
+        setExecutingAction
+    ] = useState(false);
+
+    const [
+        actionResult,
+        setActionResult
+    ] = useState(null);
+
+    const [securityActions, setSecurityActions] =
+        useState([]);
 
     async function handleLogin(event) {
         event.preventDefault();
@@ -139,11 +177,9 @@ function App() {
 
             setDisplayUsername(data.username);
             setDisplayRole(data.role);
-
             setToken(data.token);
             setMessage("");
             setPassword("");
-
         } catch (error) {
             setMessage(
                 "Unable to connect to the AegisOps Gateway."
@@ -198,7 +234,6 @@ function App() {
             const data = await response.json();
 
             setIncidents(data);
-
         } catch (error) {
             setIncidentError(
                 "Unable to connect to the AegisOps Gateway."
@@ -208,7 +243,10 @@ function App() {
         }
     }
 
-    async function loadIncidentDetails(incidentId) {
+    async function loadIncidentDetails(
+        incidentId,
+        clearActionResult = true
+    ) {
         const storedToken =
             localStorage.getItem("aegisops_token");
 
@@ -218,6 +256,11 @@ function App() {
 
         setSelectedIncident(null);
         setIncidentDetailError("");
+
+        if (clearActionResult) {
+            setActionResult(null);
+        }
+
         setLoadingIncidentDetails(true);
 
         try {
@@ -255,12 +298,62 @@ function App() {
 
             setSelectedIncident(data);
 
+            setActionType(
+                data.recommendedAction &&
+                data.recommendedAction !== "—"
+                    ? data.recommendedAction
+                    : "DISABLE_USER"
+            );
+
+            await loadIncidentActions(incidentId);
         } catch (error) {
             setIncidentDetailError(
                 "Unable to connect to the AegisOps Gateway."
             );
         } finally {
             setLoadingIncidentDetails(false);
+        }
+    }
+
+    async function loadIncidentActions(incidentId) {
+        const storedToken =
+            localStorage.getItem("aegisops_token");
+
+        if (!storedToken) {
+            return;
+        }
+
+        try {
+            const response = await fetch(
+                `${GATEWAY_URL}/api/incidents/${incidentId}/actions`,
+                {
+                    method: "GET",
+                    headers: {
+                        Authorization:
+                            `Bearer ${storedToken}`
+                    }
+                }
+            );
+
+            if (response.status === 401) {
+                handleLogout();
+                return;
+            }
+
+            if (response.status === 403) {
+                setSecurityActions([]);
+                return;
+            }
+
+            if (!response.ok) {
+                setSecurityActions([]);
+                return;
+            }
+
+            const data = await response.json();
+            setSecurityActions(data);
+        } catch (error) {
+            setSecurityActions([]);
         }
     }
 
@@ -276,6 +369,7 @@ function App() {
         }
 
         setIncidentDetailError("");
+        setActionResult(null);
 
         try {
             const response = await fetch(
@@ -302,25 +396,51 @@ function App() {
             }
 
             if (!response.ok) {
+                let errorMessage =
+                    `Unable to update approval. HTTP ${response.status}`;
+
+                try {
+                    const errorData =
+                        await response.json();
+
+                    if (errorData.message) {
+                        errorMessage =
+                            errorData.message;
+                    }
+                } catch (error) {
+                    // Keep the HTTP status message.
+                }
+
                 setIncidentDetailError(
-                    `Unable to update approval. HTTP ${response.status}`
+                    errorMessage
                 );
+
                 return;
             }
 
             const updatedIncident =
                 await response.json();
 
-            setSelectedIncident(updatedIncident);
+            setSelectedIncident(
+                updatedIncident
+            );
 
             setIncidents((currentIncidents) =>
-                currentIncidents.map((incident) =>
-                    incident.id === updatedIncident.id
-                        ? updatedIncident
-                        : incident
+                currentIncidents.map(
+                    (incident) =>
+                        incident.id ===
+                        updatedIncident.id
+                            ? updatedIncident
+                            : incident
                 )
             );
 
+            setActionType(
+                updatedIncident.recommendedAction &&
+                updatedIncident.recommendedAction !== "—"
+                    ? updatedIncident.recommendedAction
+                    : "DISABLE_USER"
+            );
         } catch (error) {
             setIncidentDetailError(
                 "Unable to connect to the AegisOps Gateway."
@@ -328,10 +448,118 @@ function App() {
         }
     }
 
+    async function executeSecurityAction(
+        incidentId
+    ) {
+        const storedToken =
+            localStorage.getItem("aegisops_token");
+
+        if (!storedToken) {
+            return;
+        }
+
+        if (!actionType.trim()) {
+            setIncidentDetailError(
+                "Please enter a security action."
+            );
+            return;
+        }
+
+        setIncidentDetailError("");
+        setActionResult(null);
+        setExecutingAction(true);
+
+        try {
+            const response = await fetch(
+                `${GATEWAY_URL}/api/incidents/${incidentId}/execute-action`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Authorization":
+                            `Bearer ${storedToken}`,
+                        "Content-Type":
+                            "application/json"
+                    },
+                    body: JSON.stringify({
+                        actionType:
+                            actionType.trim()
+                    })
+                }
+            );
+
+            if (response.status === 401) {
+                handleLogout();
+                return;
+            }
+
+            if (response.status === 403) {
+                setIncidentDetailError(
+                    "You are not authorized to execute this security action."
+                );
+                return;
+            }
+
+            if (!response.ok) {
+                let errorMessage =
+                    `Unable to execute security action. HTTP ${response.status}`;
+
+                try {
+                    const errorData =
+                        await response.json();
+
+                    if (errorData.message) {
+                        errorMessage =
+                            errorData.message;
+                    }
+                } catch (error) {
+                    // Keep the HTTP status message.
+                }
+
+                setIncidentDetailError(
+                    errorMessage
+                );
+
+                return;
+            }
+
+            const data =
+                await response.json();
+
+            /*
+             * Refresh the incident details so the page
+             * reflects MITIGATED status and resolution.
+             * We explicitly preserve the SecurityAction
+             * response so it remains visible to the user.
+             */
+            await loadIncidentDetails(
+                incidentId,
+                false
+            );
+
+            await loadIncidents();
+
+            setActionResult(data);
+        } catch (error) {
+            setIncidentDetailError(
+                "Unable to connect to the AegisOps Gateway."
+            );
+        } finally {
+            setExecutingAction(false);
+        }
+    }
+
     function handleLogout() {
-        localStorage.removeItem("aegisops_token");
-        localStorage.removeItem("aegisops_username");
-        localStorage.removeItem("aegisops_role");
+        localStorage.removeItem(
+            "aegisops_token"
+        );
+
+        localStorage.removeItem(
+            "aegisops_username"
+        );
+
+        localStorage.removeItem(
+            "aegisops_role"
+        );
 
         setToken(null);
         setDisplayUsername("Security User");
@@ -340,17 +568,35 @@ function App() {
         setSelectedIncident(null);
         setIncidentError("");
         setIncidentDetailError("");
+        setActionResult(null);
+        setSecurityActions([]);
+        setActionType("");
     }
 
     function handleBackToIncidents() {
         setSelectedIncident(null);
         setIncidentDetailError("");
+        setActionResult(null);
+        setSecurityActions([]);
+        setActionType("");
     }
 
     useEffect(() => {
-        if (token) {
-            loadIncidents();
+        if (!token) {
+            return;
         }
+
+        // Load immediately when the user is authenticated.
+        loadIncidents();
+
+        // Keep the dashboard incident list refreshed every 30 seconds.
+        const refreshInterval = setInterval(() => {
+            loadIncidents();
+        }, 30000);
+
+        return () => {
+            clearInterval(refreshInterval);
+        };
     }, [token]);
 
     if (!token) {
@@ -359,12 +605,16 @@ function App() {
                 <div className="login-card">
                     <div className="brand-section">
                         <h1>AegisOps</h1>
+
                         <p>
-                            Security Operations & Threat Response
+                            Security Operations &
+                            Threat Response
                         </p>
                     </div>
 
-                    <form onSubmit={handleLogin}>
+                    <form
+                        onSubmit={handleLogin}
+                    >
                         <label htmlFor="username">
                             Username
                         </label>
@@ -428,13 +678,15 @@ function App() {
     const investigatingIncidents =
         incidents.filter(
             (incident) =>
-                incident.status === "INVESTIGATING"
+                incident.status ===
+                "INVESTIGATING"
         ).length;
 
     const awaitingApproval =
         incidents.filter(
             (incident) =>
-                incident.status === "AWAITING_APPROVAL"
+                incident.status ===
+                "AWAITING_APPROVAL"
         ).length;
 
     const highSeverityIncidents =
@@ -444,20 +696,35 @@ function App() {
                 incident.severity === "CRITICAL"
         ).length;
 
+    const canExecuteAction =
+        displayRole === "SECURITY_ADMIN" &&
+        selectedIncident &&
+        selectedIncident.approvalStatus ===
+            "APPROVED" &&
+        selectedIncident.status !==
+            "MITIGATED";
+
     return (
         <div className="dashboard-container">
             <header className="dashboard-header">
                 <div>
                     <h1>AegisOps</h1>
+
                     <p>
-                        Security Operations & Threat Response
+                        Security Operations &
+                        Threat Response
                     </p>
                 </div>
 
                 <div className="user-section">
                     <div>
-                        <strong>{displayUsername}</strong>
-                        <span>{displayRole}</span>
+                        <strong>
+                            {displayUsername}
+                        </strong>
+
+                        <span>
+                            {displayRole}
+                        </span>
                     </div>
 
                     <button
@@ -472,17 +739,23 @@ function App() {
             <main className="dashboard-main">
                 <section className="dashboard-title">
                     <div>
-                        <h2>Security Dashboard</h2>
+                        <h2>
+                            Security Dashboard
+                        </h2>
+
                         <p>
-                            Monitor active security incidents
-                            and investigation status.
+                            Monitor active security
+                            incidents and investigation
+                            status.
                         </p>
                     </div>
 
                     <button
                         className="refresh-button"
                         onClick={loadIncidents}
-                        disabled={loadingIncidents}
+                        disabled={
+                            loadingIncidents
+                        }
                     >
                         {loadingIncidents
                             ? "Refreshing..."
@@ -498,7 +771,10 @@ function App() {
 
                 <section className="summary-grid">
                     <div className="summary-card">
-                        <span>Total incidents</span>
+                        <span>
+                            Total incidents
+                        </span>
+
                         <strong>
                             {incidents.length}
                         </strong>
@@ -506,25 +782,37 @@ function App() {
 
                     <div className="summary-card">
                         <span>Open</span>
-                        <strong>{openIncidents}</strong>
+
+                        <strong>
+                            {openIncidents}
+                        </strong>
                     </div>
 
                     <div className="summary-card">
-                        <span>Investigating</span>
+                        <span>
+                            Investigating
+                        </span>
+
                         <strong>
                             {investigatingIncidents}
                         </strong>
                     </div>
 
                     <div className="summary-card">
-                        <span>Awaiting approval</span>
+                        <span>
+                            Awaiting approval
+                        </span>
+
                         <strong>
                             {awaitingApproval}
                         </strong>
                     </div>
 
                     <div className="summary-card">
-                        <span>High / Critical</span>
+                        <span>
+                            High / Critical
+                        </span>
+
                         <strong>
                             {highSeverityIncidents}
                         </strong>
@@ -535,7 +823,9 @@ function App() {
                     {!selectedIncident && (
                         <>
                             <div className="section-header">
-                                <h3>Incidents</h3>
+                                <h3>
+                                    Incidents
+                                </h3>
                             </div>
 
                             {loadingIncidents && (
@@ -545,7 +835,8 @@ function App() {
                             )}
 
                             {!loadingIncidents &&
-                                incidents.length === 0 &&
+                                incidents.length ===
+                                    0 &&
                                 !incidentError && (
                                     <div className="empty-state">
                                         No incidents found.
@@ -553,19 +844,36 @@ function App() {
                                 )}
 
                             {!loadingIncidents &&
-                                incidents.length > 0 && (
+                                incidents.length >
+                                    0 && (
                                     <div className="table-container">
                                         <table>
                                             <thead>
                                                 <tr>
-                                                    <th>ID</th>
-                                                    <th>Type</th>
-                                                    <th>Severity</th>
-                                                    <th>Status</th>
-                                                    <th>User</th>
+                                                    <th>
+                                                        ID
+                                                    </th>
+
+                                                    <th>
+                                                        Type
+                                                    </th>
+
+                                                    <th>
+                                                        Severity
+                                                    </th>
+
+                                                    <th>
+                                                        Status
+                                                    </th>
+
+                                                    <th>
+                                                        User
+                                                    </th>
+
                                                     <th>
                                                         Threat Score
                                                     </th>
+
                                                     <th>
                                                         Action
                                                     </th>
@@ -574,7 +882,9 @@ function App() {
 
                                             <tbody>
                                                 {incidents.map(
-                                                    (incident) => (
+                                                    (
+                                                        incident
+                                                    ) => (
                                                         <tr
                                                             key={
                                                                 incident.id
@@ -701,7 +1011,10 @@ function App() {
 
                                 <div className="detail-grid">
                                     <div className="detail-card">
-                                        <span>Severity</span>
+                                        <span>
+                                            Severity
+                                        </span>
+
                                         <strong>
                                             <span
                                                 className={`severity-badge severity-${String(
@@ -716,7 +1029,10 @@ function App() {
                                     </div>
 
                                     <div className="detail-card">
-                                        <span>Status</span>
+                                        <span>
+                                            Status
+                                        </span>
+
                                         <strong>
                                             {
                                                 selectedIncident.status
@@ -725,7 +1041,10 @@ function App() {
                                     </div>
 
                                     <div className="detail-card">
-                                        <span>Threat score</span>
+                                        <span>
+                                            Threat score
+                                        </span>
+
                                         <strong>
                                             {
                                                 selectedIncident.threatScore
@@ -734,7 +1053,10 @@ function App() {
                                     </div>
 
                                     <div className="detail-card">
-                                        <span>Approval status</span>
+                                        <span>
+                                            Approval status
+                                        </span>
+
                                         <strong>
                                             {formatDetailValue(
                                                 selectedIncident.approvalStatus
@@ -743,7 +1065,10 @@ function App() {
                                     </div>
 
                                     <div className="detail-card">
-                                        <span>Username</span>
+                                        <span>
+                                            Username
+                                        </span>
+
                                         <strong>
                                             {formatDetailValue(
                                                 selectedIncident.username
@@ -752,7 +1077,10 @@ function App() {
                                     </div>
 
                                     <div className="detail-card">
-                                        <span>IP address</span>
+                                        <span>
+                                            IP address
+                                        </span>
+
                                         <strong>
                                             {formatDetailValue(
                                                 selectedIncident.ipAddress
@@ -761,7 +1089,10 @@ function App() {
                                     </div>
 
                                     <div className="detail-card">
-                                        <span>Threat ID</span>
+                                        <span>
+                                            Threat ID
+                                        </span>
+
                                         <strong>
                                             {formatDetailValue(
                                                 selectedIncident.threatId
@@ -770,7 +1101,10 @@ function App() {
                                     </div>
 
                                     <div className="detail-card">
-                                        <span>Detected at</span>
+                                        <span>
+                                            Detected at
+                                        </span>
+
                                         <strong>
                                             {formatDetailValue(
                                                 selectedIncident.detectedAt
@@ -780,7 +1114,10 @@ function App() {
                                 </div>
 
                                 <div className="detail-content-card">
-                                    <h4>Evidence</h4>
+                                    <h4>
+                                        Evidence
+                                    </h4>
+
                                     <p className="detail-text">
                                         {formatDetailValue(
                                             selectedIncident.evidence
@@ -789,7 +1126,10 @@ function App() {
                                 </div>
 
                                 <div className="detail-content-card">
-                                    <h4>Related events</h4>
+                                    <h4>
+                                        Related events
+                                    </h4>
+
                                     <p className="detail-text">
                                         {formatDetailValue(
                                             selectedIncident.relatedEvents
@@ -798,7 +1138,10 @@ function App() {
                                 </div>
 
                                 <div className="detail-content-card">
-                                    <h4>AI investigation</h4>
+                                    <h4>
+                                        AI investigation
+                                    </h4>
+
                                     <pre className="detail-pre">
                                         {
                                             formatAiInvestigation(
@@ -809,7 +1152,10 @@ function App() {
                                 </div>
 
                                 <div className="detail-content-card">
-                                    <h4>Recommended action</h4>
+                                    <h4>
+                                        Recommended action
+                                    </h4>
+
                                     <p className="detail-text">
                                         {formatDetailValue(
                                             selectedIncident.recommendedAction
@@ -817,16 +1163,21 @@ function App() {
                                     </p>
                                 </div>
 
-                                {displayRole === "SECURITY_ADMIN" &&
+                                {displayRole ===
+                                    "SECURITY_ADMIN" &&
                                     selectedIncident.approvalStatus ===
                                         "PENDING" && (
                                         <div className="approval-card">
-                                            <h4>Admin approval</h4>
+                                            <h4>
+                                                Admin approval
+                                            </h4>
 
                                             <p className="detail-text">
-                                                Review the incident before
-                                                approving or rejecting the
-                                                recommended security action.
+                                                Review the incident
+                                                before approving or
+                                                rejecting the
+                                                recommended security
+                                                action.
                                             </p>
 
                                             <div className="approval-actions">
@@ -857,8 +1208,202 @@ function App() {
                                         </div>
                                     )}
 
+                                {canExecuteAction && (
+                                    <div className="action-card">
+                                        <h4>
+                                            Execute security action
+                                        </h4>
+
+                                        <p className="detail-text">
+                                            This action is available
+                                            because the incident has
+                                            been approved by a
+                                            SECURITY_ADMIN.
+                                        </p>
+
+                                        <label
+                                            htmlFor="actionType"
+                                            className="action-label"
+                                        >
+                                            Action type
+                                        </label>
+
+                                        <input
+                                            id="actionType"
+                                            type="text"
+                                            value={actionType}
+                                            onChange={(
+                                                event
+                                            ) =>
+                                                setActionType(
+                                                    event.target
+                                                        .value
+                                                )
+                                            }
+                                            placeholder="e.g. DISABLE_USER"
+                                            className="action-input"
+                                        />
+
+                                        <button
+                                            className="execute-button"
+                                            onClick={() =>
+                                                executeSecurityAction(
+                                                    selectedIncident.id
+                                                )
+                                            }
+                                            disabled={
+                                                executingAction
+                                            }
+                                        >
+                                            {executingAction
+                                                ? "Executing..."
+                                                : "Execute Action"}
+                                        </button>
+                                    </div>
+                                )}
+
+                                {actionResult && (
+                                    <div className="detail-content-card action-result-card">
+                                        <h4>
+                                            Security action result
+                                        </h4>
+
+                                        <div className="detail-grid">
+                                            <div className="detail-card">
+                                                <span>
+                                                    Action ID
+                                                </span>
+
+                                                <strong>
+                                                    {
+                                                        actionResult.id
+                                                    }
+                                                </strong>
+                                            </div>
+
+                                            <div className="detail-card">
+                                                <span>
+                                                    Incident ID
+                                                </span>
+
+                                                <strong>
+                                                    {
+                                                        actionResult.incidentId
+                                                    }
+                                                </strong>
+                                            </div>
+
+                                            <div className="detail-card">
+                                                <span>
+                                                    Action type
+                                                </span>
+
+                                                <strong>
+                                                    {
+                                                        actionResult.actionType
+                                                    }
+                                                </strong>
+                                            </div>
+
+                                            <div className="detail-card">
+                                                <span>
+                                                    Status
+                                                </span>
+
+                                                <strong>
+                                                    {
+                                                        actionResult.status
+                                                    }
+                                                </strong>
+                                            </div>
+
+                                            <div className="detail-card">
+                                                <span>
+                                                    Target user
+                                                </span>
+
+                                                <strong>
+                                                    {formatDetailValue(
+                                                        actionResult.targetUsername
+                                                    )}
+                                                </strong>
+                                            </div>
+
+                                            <div className="detail-card">
+                                                <span>
+                                                    Executed at
+                                                </span>
+
+                                                <strong>
+                                                    {formatDetailValue(
+                                                        actionResult.executedAt
+                                                    )}
+                                                </strong>
+                                            </div>
+                                        </div>
+
+                                        <p className="detail-text">
+                                            {formatDetailValue(
+                                                actionResult.details
+                                            )}
+                                        </p>
+                                    </div>
+                                )}
+
+                                {securityActions.length > 0 && (
+                                    <div className="detail-content-card">
+                                        <h4>
+                                            Security action history
+                                        </h4>
+
+                                        <div className="detail-grid">
+                                            {securityActions.map(
+                                                (action) => (
+                                                    <div
+                                                        className="detail-card"
+                                                        key={action.id}
+                                                    >
+                                                        <span>
+                                                            Action #{action.id}
+                                                        </span>
+
+                                                        <strong>
+                                                            {action.actionType}
+                                                        </strong>
+
+                                                        <span>
+                                                            Status: {action.status}
+                                                        </span>
+
+                                                        <span>
+                                                            Target user: {formatDetailValue(
+                                                                action.targetUsername
+                                                            )}
+                                                        </span>
+
+                                                        <span>
+                                                            Executed at: {formatDetailValue(
+                                                                action.executedAt
+                                                            )}
+                                                        </span>
+
+                                                        <p className="detail-text">
+                                                            {formatDetailValue(
+                                                                action.details
+                                                            )}
+                                                        </p>
+                                                    </div>
+                                                )
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="detail-content-card">
-                                    <h4>Resolution</h4>
+                                    <h4>
+                                        Resolution
+                                    </h4>
+
                                     <p className="detail-text">
                                         {formatDetailValue(
                                             selectedIncident.resolution

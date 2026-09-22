@@ -5,6 +5,7 @@ import com.aegisops.dto.SecurityActionRequest;
 import com.aegisops.entity.Incident;
 import com.aegisops.entity.SecurityAction;
 import com.aegisops.repository.IncidentRepository;
+import com.aegisops.repository.SecurityActionRepository;
 import com.aegisops.service.IncidentService;
 import com.aegisops.service.SecurityActionService;
 import jakarta.validation.Valid;
@@ -19,15 +20,18 @@ import java.util.List;
 public class IncidentController {
 
     private final IncidentRepository incidentRepository;
+    private final SecurityActionRepository securityActionRepository;
     private final IncidentService incidentService;
     private final SecurityActionService securityActionService;
 
     public IncidentController(
             IncidentRepository incidentRepository,
+            SecurityActionRepository securityActionRepository,
             IncidentService incidentService,
             SecurityActionService securityActionService) {
 
         this.incidentRepository = incidentRepository;
+        this.securityActionRepository = securityActionRepository;
         this.incidentService = incidentService;
         this.securityActionService = securityActionService;
     }
@@ -52,6 +56,20 @@ public class IncidentController {
                                 "Incident not found: " + id
                         )
                 );
+    }
+
+    @GetMapping("/{id}/actions")
+    public List<SecurityAction> getIncidentActions(
+            @PathVariable Long id) {
+
+        incidentRepository.findById(id)
+                .orElseThrow(
+                        () -> new RuntimeException(
+                                "Incident not found: " + id
+                        )
+                );
+
+        return securityActionRepository.findByIncidentId(id);
     }
 
     @PutMapping("/{id}/status")

@@ -40,6 +40,9 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health")
                         .permitAll()
 
+                        .requestMatchers("/error")
+                        .permitAll()
+
                         .requestMatchers("/api/auth/users/*/role")
                         .hasRole("SECURITY_ADMIN")
 

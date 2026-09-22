@@ -448,6 +448,44 @@ tbody tr:hover {
     background: #7f1d1d;
 }
 
+/* Security action */
+
+.action-card {
+    margin-bottom: 18px;
+    padding: 20px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+}
+
+.action-card h4 {
+    margin: 0 0 10px;
+    font-size: 16px;
+}
+
+.action-label {
+    display: block;
+    margin-top: 18px;
+}
+
+.action-input {
+    width: 100%;
+    margin-bottom: 14px;
+}
+
+.execute-button {
+    margin-top: 4px;
+    background: #1f2937;
+}
+
+.execute-button:hover {
+    background: #111827;
+}
+
+.action-result-card {
+    background: #f8fafc;
+}
+
 /* Responsive */
 
 @media (max-width: 1000px) {
