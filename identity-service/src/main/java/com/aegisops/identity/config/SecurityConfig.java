@@ -37,10 +37,6 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/login")
                         .permitAll()
 
-                        // Temporary development-only endpoint.
-                        .requestMatchers("/api/auth/dev-reset-password")
-                        .permitAll()
-
                         .requestMatchers("/actuator/health")
                         .permitAll()
 
